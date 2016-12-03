@@ -14,7 +14,7 @@ from sklearn.model_selection import cross_val_score
 n_hidden_1=2000
 n_hidden_2=500
 
-learning_rate=0.5
+learning_rate=0.1
 max_iter=100
 
 def normalize(x):
@@ -79,8 +79,8 @@ def getEncoder(data):
 
     cost=tf.reduce_min(PCCloss(y_true,y_pred))
     #optimizer=tf.train.RMSPropOptimizer(learning_rate).minimize(cost)
-    #optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
-    optimizer=tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+    optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
+    #optimizer=tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 
     init=tf.global_variables_initializer()
 
