@@ -11,11 +11,11 @@ import sklearn.preprocessing as skp
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
 
-n_hidden_1=1000
-n_hidden_2=200
+n_hidden_1=2000
+n_hidden_2=500
 
 learning_rate=0.1
-max_iter=3000
+max_iter=5000
 
 def normalize(x):
     mean=tf.div(tf.reduce_sum(x,1,keep_dims=True),4)
@@ -127,7 +127,7 @@ def main():
     data=data[:,:-1]
 
     build=False
-    #build=True
+    build=True
     test=True
     #test=False
 
