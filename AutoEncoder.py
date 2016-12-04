@@ -7,6 +7,7 @@ import pandas as pd
 import tensorflow as tf
 
 import matplotlib.pyplot as plt
+import scipy.io as sio
 
 import sklearn.preprocessing as skp
 from sklearn import svm
@@ -122,6 +123,8 @@ def main():
     build=True
     test=True
     #test=False
+    matlab=True
+    #matlab=False
 
     if os.path.isfile('encoder.pk1') and not build:
         encoder=np.load('encoder.pk1')
@@ -136,6 +139,10 @@ def main():
 
     if test:
         testSVM(encoder,data,labels)
+
+    if matlab:
+        D=np.stack_column([encoder,labels])
+        sio.savemat('AE_features',{'D':D})
 
 if __name__=="__main__":
     main()
