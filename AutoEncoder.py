@@ -1,11 +1,13 @@
 import sys
 import os.path
+import time
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 
 import matplotlib.pyplot as plt
+import scipy.io as sio
 
 import sklearn.preprocessing as skp
 from sklearn import svm
@@ -89,6 +91,7 @@ def getEncoder(data,learning_rate=0.1):
     sess.run(init)
 
     print("rate=",learning_rate)
+    t=time.time()
     for epoch in range(max_iter):
         if (epoch+1 % 500==0):
             learning_rate/=2.0
@@ -100,7 +103,8 @@ def getEncoder(data,learning_rate=0.1):
         if epoch % 100 ==0:
             print("Epoch:","%03d" % (epoch+1),"cost=", c)#"{:9f}".format(c))
 
-    print("Finished")
+    elpase=time.time()-t
+    print("Finished, elpase time:",elpase)
 
     encode_decode=sess.run(y_pred,feed_dict={X:data})
     return encode_decode
@@ -130,6 +134,8 @@ def main():
     build=True
     test=True
     #test=False
+    matlab=True
+    #matlab=False
 
     if os.path.isfile('encoder.pk1') and not build:
         encoder=np.load('encoder.pk1')
@@ -141,6 +147,12 @@ def main():
 
     if test:
         testSVM(encoder,data,labels)
+
+    if matlab:
+        D=np.column_stack(encoder,labels)
+        print(D.shape)
+        print(D[180:190,-2:])
+        sio.savemat('AE_features',{'D':D})
 
 if __name__=="__main__":
     main()
