@@ -13,8 +13,8 @@ import sklearn.preprocessing as skp
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
 
-n_hidden_1=2000
-n_hidden_2=500
+n_hidden_1=1800
+n_hidden_2=300
 
 learning_rate=0.1
 max_iter=5000
@@ -101,13 +101,13 @@ def getEncoder(data,learning_rate=0.1):
         _, c=sess.run([optimizer, cost],feed_dict={X:data})
 
         if epoch % 100 ==0:
-            print("Epoch:","%03d" % (epoch+1),"cost=", c)#"{:9f}".format(c))
+            print("Epoch:","%04d" % (epoch+1),"cost=", "{:4f}".format(c))
 
     elpase=time.time()-t
     print("Finished, elpase time:",elpase)
 
-    encode_decode=sess.run(y_pred,feed_dict={X:data})
-    return encode_decode
+    encoded=sess.run(encoder_op,feed_dict={X:data})
+    return encoded
 
 def testSVM(data,odata,labels):
     #clf1 = svm.SVC(kernel='linear', C=1)
@@ -149,7 +149,7 @@ def main():
         testSVM(encoder,data,labels)
 
     if matlab:
-        D=np.column_stack(encoder,labels)
+        D=np.column_stack([encoder,labels])
         print(D.shape)
         print(D[180:190,-2:])
         sio.savemat('AE_features',{'D':D})
