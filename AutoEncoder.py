@@ -1,5 +1,6 @@
 import sys
 import os.path
+import time
 
 import numpy as np
 import pandas as pd
@@ -11,8 +12,7 @@ import sklearn.preprocessing as skp
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
 
-n_hidden_1=2000
-n_hidden_2=500
+n_hidden=500
 
 learning_rate=0.1
 max_iter=5000
@@ -42,34 +42,26 @@ def getEncoder(data,learning_rate=0.1):
     X=tf.placeholder("float", [None,n_features])
 
     weights={
-            'encoder_h1':tf.Variable(tf.random_normal([n_features, n_hidden_1])),
-            'encoder_h2':tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
-            'decoder_h1':tf.Variable(tf.random_normal([n_hidden_2, n_hidden_1])),
-            'decoder_h2':tf.Variable(tf.random_normal([n_hidden_1, n_features])),
+            'encoder_h':tf.Variable(tf.random_normal([n_features, n_hidden])),
+            'decoder_h':tf.Variable(tf.random_normal([n_hidden, n_features])),
             }
 
     biases={
-            'encoder_b1':tf.Variable(tf.random_normal([n_hidden_1])),
-            'encoder_b2':tf.Variable(tf.random_normal([n_hidden_2])),
-            'decoder_b1':tf.Variable(tf.random_normal([n_hidden_1])),
-            'decoder_b2':tf.Variable(tf.random_normal([n_features])),
+            'encoder_b':tf.Variable(tf.random_normal([n_hidden])),
+            'decoder_b':tf.Variable(tf.random_normal([n_features])),
             }
 
     def encoder(x):
-        layer_1=tf.nn.sigmoid(tf.add(tf.matmul(x,weights['encoder_h1']),
-                                                biases['encoder_b1']))
+        layer=tf.nn.sigmoid(tf.add(tf.matmul(x,weights['encoder_h']),
+                                                biases['encoder_b']))
 
-        layer_2=tf.nn.sigmoid(tf.add(tf.matmul(layer_1,weights['encoder_h2']),
-                                                biases['encoder_b2']))
-        return layer_2
+        return layer
 
     def decoder(x):
-        layer_1=tf.nn.sigmoid(tf.add(tf.matmul(x,weights['decoder_h1']),
-                                                biases['decoder_b1']))
+        layer=tf.nn.sigmoid(tf.add(tf.matmul(x,weights['decoder_h']),
+                                                biases['decoder_b']))
 
-        layer_2=tf.nn.sigmoid(tf.add(tf.matmul(layer_1,weights['decoder_h2']),
-                                                biases['decoder_b2']))
-        return layer_2
+        return layer
 
     encoder_op=encoder(X)
     decoder_op=decoder(encoder_op)
@@ -134,7 +126,10 @@ def main():
     if os.path.isfile('encoder.pk1') and not build:
         encoder=np.load('encoder.pk1')
     else:
+        t=time.time()
         encoder=getEncoder(data)
+        elapsed=time.time()-t
+        print('elapsed=',elapsed)
         f=open('encoder.pk1','wb')
         np.save(f,encoder,learning_rate)
         f.close()
