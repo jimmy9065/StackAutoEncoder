@@ -13,10 +13,11 @@ import sklearn.preprocessing as skp
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
 
-n_hidden=500
+n_hidden=1000
 
-learning_rate=0.1
-max_iter=5000
+learning_rate=0.01
+max_iter=3000
+drate=500
 
 def normalize(x):
     mean=tf.div(tf.reduce_sum(x,1,keep_dims=True),4)
@@ -33,8 +34,9 @@ def PCCloss(X1,X2):
     tbX2=tf.expand_dims(bX2,2)
     tproduct=tf.batch_matmul(tbX1,tbX2)
     product=tf.squeeze(tproduct)
-    loss=tf.mul(tf.constant(-1.0,dtype=tf.float32),
-                            tf.reduce_sum(product))
+    loss=tf.negative(product)
+    #loss=tf.mul(tf.constant(-1.0,dtype=tf.float32),
+    #                        tf.reduce_sum(product))
     return loss
 
 def getEncoder(data,learning_rate=0.1):
@@ -70,8 +72,9 @@ def getEncoder(data,learning_rate=0.1):
     y_pred=decoder_op
     y_true=X
 
-    cost=tf.reduce_min(PCCloss(y_true,y_pred))
-    #optimizer=tf.train.RMSPropOptimizer(learning_rate).minimize(cost)
+    cost=tf.reduce_max(PCCloss(y_true,y_pred))
+    #cost=PCCloss(y_true,y_pred)
+    #cost=tf.reduce_min(tf.reduce_sum(tf.pow(tf.subtract(y_true,y_pred),2)))
     optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
     #optimizer=tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 
@@ -83,7 +86,7 @@ def getEncoder(data,learning_rate=0.1):
 
     print("rate=",learning_rate)
     for epoch in range(max_iter):
-        if (epoch+1 % 500==0):
+        if (epoch+1 % drate==0):
             learning_rate/=2.0
             print("rate=",learning_rate)
             optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
@@ -106,8 +109,8 @@ def testSVM(data,odata,labels):
 
     #print(scores)
     #print(sum(scores)/10)
-    print("[ 0.45945946  0.59459459  0.51351351  0.45945946  0.62162162  0.54054054  0.52777778  0.48571429  0.57142857  0.6]")
-    print("0.537410982411")
+    #print("[ 0.45945946  0.59459459  0.51351351  0.45945946  0.62162162  0.54054054  0.52777778  0.48571429  0.57142857  0.6]")
+    print("0.5374")
 
     scores = cross_val_score(clf2, data, labels, cv=10)
     print(scores)
@@ -130,18 +133,18 @@ def main():
         encoder=np.load('encoder.pk1')
     else:
         t=time.time()
-        encoder=getEncoder(data)
+        encoder=getEncoder(data,learning_rate)
         elapsed=time.time()-t
         print('elapsed=',elapsed)
         f=open('encoder.pk1','wb')
-        np.save(f,encoder,learning_rate)
+        np.save(f,encoder)
         f.close()
 
     if test:
         testSVM(encoder,data,labels)
 
     if matlab:
-        D=np.stack_column([encoder,labels])
+        D=np.column_stack([encoder,labels])
         sio.savemat('AE_features',{'D':D})
 
 if __name__=="__main__":
