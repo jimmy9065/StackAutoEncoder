@@ -11,11 +11,11 @@ import sklearn.preprocessing as skp
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
 
-n_hidden_1=2000
-n_hidden_2=500
+n_hidden_1=1000
+n_hidden_2=200
 
 learning_rate=0.1
-max_iter=100
+max_iter=3000
 
 def normalize(x):
     mean=tf.div(tf.reduce_sum(x,1,keep_dims=True),4)
@@ -36,7 +36,7 @@ def PCCloss(X1,X2):
                             tf.reduce_sum(product))
     return loss
 
-def getEncoder(data):
+def getEncoder(data,learning_rate=0.1):
     n_features=data.shape[1]
 
     X=tf.placeholder("float", [None,n_features])
@@ -88,10 +88,16 @@ def getEncoder(data):
     sess=tf.Session()
     sess.run(init)
 
+    print("rate=",learning_rate)
     for epoch in range(max_iter):
+        if (epoch+1 % 500==0):
+            learning_rate/=2.0
+            print("rate=",learning_rate)
+            optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
+
         _, c=sess.run([optimizer, cost],feed_dict={X:data})
 
-        if epoch % 10 ==0:
+        if epoch % 100 ==0:
             print("Epoch:","%03d" % (epoch+1),"cost=", c)#"{:9f}".format(c))
 
     print("Finished")
@@ -100,12 +106,15 @@ def getEncoder(data):
     return encode_decode
 
 def testSVM(data,odata,labels):
-    clf1 = svm.SVC(kernel='linear', C=1)
+    #clf1 = svm.SVC(kernel='linear', C=1)
+    #scores = cross_val_score(clf1, odata, labels, cv=10)
+
     clf2 = svm.SVC(kernel='linear', C=1)
 
-    scores = cross_val_score(clf1, odata, labels, cv=10)
-    print(scores)
-    print(sum(scores)/10)
+    #print(scores)
+    #print(sum(scores)/10)
+    print("[ 0.45945946  0.59459459  0.51351351  0.45945946  0.62162162  0.54054054  0.52777778  0.48571429  0.57142857  0.6]")
+    print("0.537410982411")
 
     scores = cross_val_score(clf2, data, labels, cv=10)
     print(scores)
@@ -117,17 +126,21 @@ def main():
     labels=(data[:,-1]-1).tolist()
     data=data[:,:-1]
 
-    #build=False
-    build=True
+    build=False
+    #build=True
+    test=True
+    #test=False
 
     if os.path.isfile('encoder.pk1') and not build:
         encoder=np.load('encoder.pk1')
-        testSVM(encoder,data,labels)
     else:
         encoder=getEncoder(data)
-        #f=open('encoder.pk1','wb')
-        #np.save(f,encoder)
-        #f.close()
+        f=open('encoder.pk1','wb')
+        np.save(f,encoder,learning_rate)
+        f.close()
+
+    if test:
+        testSVM(encoder,data,labels)
 
 if __name__=="__main__":
     main()
