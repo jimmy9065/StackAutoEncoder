@@ -13,13 +13,19 @@ import sklearn.preprocessing as skp
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
 
-n_hidden1=1000
+n_hidden1=4048
+
+n_hidden=[1024,512]
 
 learning_rate1=0.5
+learning_rate2=0.5
 max_iter1=2000
 
+depth=1
+
+
 build=True
-#test=True
+test=True
 matlab=True
 
 def normalize(x):
@@ -40,70 +46,44 @@ def PCCloss(X1,X2):
     loss=tf.negative(product)
     return loss
 
-def getEncoder(data):
+def LinearAE(data):
     n_features=data.shape[1]
-
     X=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
+    dropX=tf.nn.dropout(X,0.1)
 
-    weights={
-            'encoder_h1':tf.Variable(tf.random_normal([n_features, n_hidden1])),
-            }
+    w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden1]))
+    w_decoder=tf.transpose(w_encoder)
+    b_encoder=tf.Variable(tf.random_normal([n_hidden1]))
+    b_decoder=tf.Variable(tf.random_normal([n_features]))
 
-    biases={
-            'encoder_b1':tf.Variable(tf.random_normal([n_hidden1])),
-            'decoder_b1':tf.Variable(tf.random_normal([n_features])),
-            }
-
-    #first stack
-    def encoder1(x):
-        w_encoder1=weights['encoder_h1']
-        layer=tf.nn.bias_add(tf.matmul(x,w_encoder1), biases['encoder_b1'])
-
-        return layer
-
-    def decoder1(x):
-        w_decoder1=tf.transpose(weights['encoder_h1'])
-        layer=tf.nn.bias_add(tf.matmul(x,w_decoder1), biases['decoder_b1'])
-
-        return layer
-
-    hidden1=encoder1(X)
-    y1=decoder1(hidden1)
-
+    #add noise
+    hidden=tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder)
+    y_pred=tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder)
     y_true=X
 
-    cost1=tf.reduce_mean(PCCloss(y_true,y1))
-    #optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
-    print("learning_rate1=",learning_rate1)
-    optimizer1=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost1)
-
-    #for other layers to configed
+    cost=tf.reduce_mean(PCCloss(y_true,y_pred))
+    optimizer=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost)
 
     # start to run
     init=tf.global_variables_initializer()
-
     sess=tf.Session()
     sess.run(init)
 
-    #first layer
-    print("rate=",learning_rate1)
     for epoch in range(max_iter1):
         batches=divideData(data)
         co=0
         for batch in batches:
-            _, c=sess.run([optimizer1, cost1],feed_dict={X:batch})
+            _, c=sess.run([optimizer, cost],feed_dict={X:batch})
             co+=c
-
         co/=3
+
         if epoch % 200 ==0:
             print("Epoch:","%03d" % (epoch+1),"cost=", "{:9f}".format(co))
 
-    #for the other layers
-
     print("Finished")
 
-    encoded=sess.run(hidden1,feed_dict={X:data})
-    #also provide the w_matrix
+    encoded=sess.run(hidden,feed_dict={dropX:data})
+
     return encoded
 
 def testSVM(data,odata,labels):
@@ -128,6 +108,8 @@ def main():
     np.random.seed(0)
     data=pd.read_pickle("data-knn.pk1").values
     labels=(data[:,-1]-1).tolist()
+    #data=np.load('ndata.pk1')
+    #labels=(data[:,-1]).tolist()
 
     data=data[:,:-1]
 
@@ -139,12 +121,12 @@ def main():
         encoder=np.load('encoder.pk1')
     else:
         t=time.time()
-        encoder=getEncoder(data)
+        encoder=LinearAE(data)
         elapsed=int(time.time()-t)
         print('elapsed= %d min:%d seconds' % (int(elapsed/60),elapsed%60))
-        #f=open('encoder.pk1','wb')
-        #np.save(f,encoder)
-        #f.close()
+        f=open('encoder.pk1','wb')
+        np.save(f,encoder)
+        f.close()
 
     if test:
         testSVM(encoder,data,labels)
