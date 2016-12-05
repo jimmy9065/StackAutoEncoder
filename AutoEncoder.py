@@ -13,15 +13,16 @@ import sklearn.preprocessing as skp
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
 
-n_hidden1=4048
-
-n_hidden=[1024,512]
-
-learning_rate1=0.5
-learning_rate2=0.5
+n_hidden1=1024
 max_iter1=2000
 
-depth=1
+n_hidden=[2048,1024,1024]
+max_iter=[2000,2000]
+
+Max_depth=1
+
+learning_rate1=0.5
+learning_rate2=0.4
 
 
 build=True
@@ -46,22 +47,72 @@ def PCCloss(X1,X2):
     loss=tf.negative(product)
     return loss
 
+def NonLinearAE(data,depth):
+    print("depth=",depth)
+    n_features=data.shape[1]
+    X=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
+    dropX=tf.nn.dropout(X,0.1) #adding noise
+
+    w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden[depth]]))
+    #w_decoder=tf.Variable(tf.random_normal([n_hidden[depth], n_features]))
+    w_decoder=tf.transpose(w_encoder)
+    b_encoder=tf.Variable(tf.random_normal([n_hidden[depth]]))
+    b_decoder=tf.Variable(tf.random_normal([n_features]))
+
+    hidden=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder))
+    y_pred=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder))
+    y_true=X
+
+    #change cost
+    #cost=tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y_pred,y_true))
+    cost=tf.reduce_mean(PCCloss(y_true,y_pred))
+    optimizer=tf.train.AdamOptimizer(learning_rate2).minimize(cost)
+
+    # start to run
+    init=tf.global_variables_initializer()
+    sess=tf.Session()
+    sess.run(init)
+
+    for epoch in range(max_iter[depth]):
+        batches=divideData(data)
+        co=0
+        for batch in batches:
+            _, c=sess.run([optimizer, cost],feed_dict={X:batch})
+            co+=c
+        co/=3
+
+        if epoch % 200 ==0:
+            print("Depth: ", depth+1, " Epoch:", "%03d" % (epoch+1),"cost=", co)#"{:9f}".format(co))
+
+    encoded=sess.run(hidden,feed_dict={dropX:data})
+    w=sess.run(w_encoder)
+
+    if depth<Max_depth:
+        e,ws=NonLinearAE(encoded,1)
+    else:
+        e=encoded
+        ws=[]
+
+    ws.append(w)
+
+    return e,ws
+
 def LinearAE(data):
     n_features=data.shape[1]
     X=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
-    dropX=tf.nn.dropout(X,0.1)
+    dropX=tf.nn.dropout(X,0.1) #adding noise
 
     w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden1]))
     w_decoder=tf.transpose(w_encoder)
     b_encoder=tf.Variable(tf.random_normal([n_hidden1]))
     b_decoder=tf.Variable(tf.random_normal([n_features]))
 
-    #add noise
     hidden=tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder)
     y_pred=tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder)
     y_true=X
 
     cost=tf.reduce_mean(PCCloss(y_true,y_pred))
+    #cost=tf.reduce_mean(tf.pow(y_true-y_pred, 2))
     optimizer=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost)
 
     # start to run
@@ -84,7 +135,11 @@ def LinearAE(data):
 
     encoded=sess.run(hidden,feed_dict={dropX:data})
 
-    return encoded
+    e,ws=NonLinearAE(encoded,1)
+    w=sess.run(w_encoder)
+    ws.append(w)
+
+    return e,ws
 
 def testSVM(data,odata,labels):
     clf2 = svm.SVC(kernel='linear', C=1)
@@ -106,10 +161,10 @@ def divideData(D):
 def main():
     tf.set_random_seed(0)
     np.random.seed(0)
-    data=pd.read_pickle("data-knn.pk1").values
-    labels=(data[:,-1]-1).tolist()
-    #data=np.load('ndata.pk1')
-    #labels=(data[:,-1]).tolist()
+    #data=pd.read_pickle("data-knn.pk1").values
+    #labels=(data[:,-1]-1).tolist()
+    data=np.load('ndata.pk1')
+    labels=(data[:,-1]).tolist()
 
     data=data[:,:-1]
 
@@ -118,14 +173,15 @@ def main():
     matlab=False
 
     if (not build) and os.path.isfile('encoder.pk1'):
-        encoder=np.load('encoder.pk1')
+        encoder=np.load('encoder.pk1')[0]
     else:
         t=time.time()
-        encoder=LinearAE(data)
+        #encoder,weights=LinearAE(data)
+        encoder,weights=NonLinearAE(data,0)
         elapsed=int(time.time()-t)
         print('elapsed= %d min:%d seconds' % (int(elapsed/60),elapsed%60))
         f=open('encoder.pk1','wb')
-        np.save(f,encoder)
+        np.save(f,[encoder,weights])
         f.close()
 
     if test:
