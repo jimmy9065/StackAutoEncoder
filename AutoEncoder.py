@@ -128,7 +128,7 @@ def main():
         t=time.time()
         encoder=getEncoder(data)
         elapsed=int(time.time()-t)
-        print('elapsed=%dmin:%dseconds',elapsed/60,elapsed%60)
+        print('elapsed= %d min:%d seconds' % (int(elapsed/60),elapsed%60))
         #f=open('encoder.pk1','wb')
         #np.save(f,encoder)
         #f.close()
