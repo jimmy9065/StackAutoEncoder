@@ -15,9 +15,13 @@ from sklearn.model_selection import cross_val_score
 
 n_hidden=1000
 
-learning_rate=0.01
-max_iter=3000
+learning_rate=0.05
+max_iter=2000
 drate=500
+
+build=True
+test=True
+matlab=True
 
 def normalize(x):
     mean=tf.div(tf.reduce_sum(x,1,keep_dims=True),4)
@@ -35,8 +39,6 @@ def PCCloss(X1,X2):
     tproduct=tf.batch_matmul(tbX1,tbX2)
     product=tf.squeeze(tproduct)
     loss=tf.negative(product)
-    #loss=tf.mul(tf.constant(-1.0,dtype=tf.float32),
-    #                        tf.reduce_sum(product))
     return loss
 
 def getEncoder(data,learning_rate=0.1):
@@ -44,6 +46,7 @@ def getEncoder(data,learning_rate=0.1):
 
     X=tf.placeholder("float", [None,n_features])
 
+    #init parameter
     weights={
             'encoder_h':tf.Variable(tf.random_normal([n_features, n_hidden])),
             'decoder_h':tf.Variable(tf.random_normal([n_hidden, n_features])),
@@ -54,61 +57,52 @@ def getEncoder(data,learning_rate=0.1):
             'decoder_b':tf.Variable(tf.random_normal([n_features])),
             }
 
-    def encoder(x):
-        layer=tf.nn.sigmoid(tf.add(tf.matmul(x,weights['encoder_h']),
-                                                biases['encoder_b']))
 
-        return layer
+    #build graph
+    wi=weights['encoder_h']
+    #Hlayer=tf.nn.sigmoid(tf.add(tf.matmul(X,wi), biases['encoder_b']))
+    #Hlayer=tf.nn.relu(tf.add(tf.matmul(X,wi), biases['encoder_b']))
+    Hlayer=tf.nn.bias_add(tf.matmul(X,wi), biases['encoder_b'])
 
-    def decoder(x):
-        layer=tf.nn.sigmoid(tf.add(tf.matmul(x,weights['decoder_h']),
-                                                biases['decoder_b']))
+    wo=tf.transpose(wi)
+    #wo=weights['decoder_h']
+    #X_pred=tf.nn.sigmoid(tf.add(tf.matmul(Hlayer,wo), biases['decoder_b']))
+    X_pred=tf.nn.bias_add(tf.matmul(Hlayer,wo), biases['decoder_b'])
 
-        return layer
+    cost=tf.reduce_mean(PCCloss(X,X_pred))
+    #cost=tf.reduce_mean(tf.pow(X-X_pred,2))
+    #optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
+    optimizer=tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 
-    encoder_op=encoder(X)
-    decoder_op=decoder(encoder_op)
-
-    y_pred=decoder_op
-    y_true=X
-
-    cost=tf.reduce_max(PCCloss(y_true,y_pred))
-    #cost=PCCloss(y_true,y_pred)
-    #cost=tf.reduce_min(tf.reduce_sum(tf.pow(tf.subtract(y_true,y_pred),2)))
-    optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
-    #optimizer=tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
-
+    #init for session
     init=tf.global_variables_initializer()
 
-    #sess=tf.Session(config=tf.ConfigProto(log_device_placement=True))
     sess=tf.Session()
     sess.run(init)
 
+    #run
     print("rate=",learning_rate)
     for epoch in range(max_iter):
         if (epoch+1 % drate==0):
-            learning_rate/=2.0
+            #learning_rate/=2.0
             print("rate=",learning_rate)
-            optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
+            #optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
+            optimizer=tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 
         _, c=sess.run([optimizer, cost],feed_dict={X:data})
 
-        if epoch % 100 ==0:
-            print("Epoch:","%03d" % (epoch+1),"cost=", c)#"{:9f}".format(c))
+        if epoch % 200 ==0:
+            print("Epoch:","%04d" % (epoch+1),"cost=", c)#"{:9f}".format(c))
+        #print("Epoch:","%04d" % (epoch+1),"cost=", c)#"{:9f}".format(c))
 
     print("Finished")
 
-    encode_decode=sess.run(y_pred,feed_dict={X:data})
-    return encode_decode
+    encoded=sess.run(Hlayer,feed_dict={X:data})
+    return encoded
 
 def testSVM(data,odata,labels):
-    #clf1 = svm.SVC(kernel='linear', C=1)
-    #scores = cross_val_score(clf1, odata, labels, cv=10)
-
     clf2 = svm.SVC(kernel='linear', C=1)
 
-    #print(scores)
-    #print(sum(scores)/10)
     #print("[ 0.45945946  0.59459459  0.51351351  0.45945946  0.62162162  0.54054054  0.52777778  0.48571429  0.57142857  0.6]")
     print("0.5374")
 
@@ -120,14 +114,13 @@ def main():
     tf.set_random_seed(0)
     data=pd.read_pickle("data-knn.pk1").values
     labels=(data[:,-1]-1).tolist()
+    #data=np.load('ndata.pk1')
+    #labels=(data[:,-1]).tolist()
     data=data[:,:-1]
 
-    build=False
-    build=True
-    test=True
-    #test=False
-    matlab=True
-    #matlab=False
+    #build=False
+    test=False
+    matlab=False
 
     if os.path.isfile('encoder.pk1') and not build:
         encoder=np.load('encoder.pk1')
