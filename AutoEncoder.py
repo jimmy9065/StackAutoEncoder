@@ -43,7 +43,7 @@ def PCCloss(X1,X2):
 def getEncoder(data):
     n_features=data.shape[1]
 
-    X=tf.placeholder("float", [None,n_features])
+    X=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
 
     weights={
             'encoder_h1':tf.Variable(tf.random_normal([n_features, n_hidden1])),
@@ -88,15 +88,19 @@ def getEncoder(data):
     #first layer
     print("rate=",learning_rate1)
     for epoch in range(max_iter1):
-        _, c=sess.run([optimizer1, cost1],feed_dict={X:data})
+        batches=divideData(data)
+        co=0
+        for batch in batches:
+            _, c=sess.run([optimizer1, cost1],feed_dict={X:batch})
+            co+=c
 
+        co/=3
         if epoch % 200 ==0:
-            print("Epoch:","%03d" % (epoch+1),"cost=", "{:9f}".format(c))
+            print("Epoch:","%03d" % (epoch+1),"cost=", "{:9f}".format(co))
 
     #for the other layers
 
     print("Finished")
-
 
     encoded=sess.run(hidden1,feed_dict={X:data})
     #also provide the w_matrix
@@ -112,14 +116,23 @@ def testSVM(data,odata,labels):
     print(scores)
     print(sum(scores)/10)
 
+def divideData(D):
+    index=np.arange(D.shape[0])
+    np.random.shuffle(index)
+    D=D[index,:]
+    batches=np.split(D,3)
+    return batches
+
 def main():
     tf.set_random_seed(0)
+    np.random.seed(0)
     data=pd.read_pickle("data-knn.pk1").values
     labels=(data[:,-1]-1).tolist()
+
     data=data[:,:-1]
 
     #build=False
-    test=False
+    #test=False
     matlab=False
 
     if (not build) and os.path.isfile('encoder.pk1'):
