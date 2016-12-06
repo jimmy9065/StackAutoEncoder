@@ -11,15 +11,14 @@ import scipy.io as sio
 
 import sklearn.preprocessing as skp
 from sklearn import svm
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
 
-n_hidden1=1024
-max_iter1=2000
 
-n_hidden=[1024,512,1024,512,256]
-max_iter=[2000,4000,3000,4000,4000]
+n_hidden=[1024,4096,2048,1024,512,256,128]
+max_iter=[3000,4000,2000,1000,1000,1000,1000]
 
-Max_depth=4
+Max_depth=6
 
 learning_rate1=0.5
 learning_rate2=0.04
@@ -29,6 +28,8 @@ labels=[]
 build=True
 test=True
 matlab=True
+
+log=[]
 
 def normalize(x):
     mean=tf.div(tf.reduce_sum(x,1,keep_dims=True),4)
@@ -48,17 +49,27 @@ def PCCloss(X1,X2):
     loss=tf.negative(product)
     return loss
 
-def testSVM(data,odata,labels):
+def testSVM(data,labels):
     clf2 = svm.SVC(kernel='linear', C=1)
-
-    #print("[ 0.45945946  0.59459459  0.51351351  0.45945946  0.62162162  0.54054054  0.52777778  0.48571429  0.57142857  0.6]")
-    print("0.5374")
+    clf3 = svm.SVC(kernel='rbf', C=1)
 
     scores = cross_val_score(clf2, data, labels, cv=10)
+    print("Linear")
     print(scores)
     print(sum(scores)/10)
 
+    scores = cross_val_score(clf3, data, labels, cv=10)
+    print("RBF")
+    print(scores)
+    print(sum(scores)/10)
+
+def testLogistic(data,labels,dim):
+    lg = LogisticRegression()
+    scores = cross_val_score(lg, data, labels, cv=10)
+    print(scores)
+
 def NonLinearAE(data,depth):
+    global learning_rate2
     print("depth=",depth)
     n_features=data.shape[1]
     X=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
@@ -100,9 +111,14 @@ def NonLinearAE(data,depth):
 
 
     print("finish training")
-    encoded=sess.run(hidden,feed_dict={dropX:data})
 
-    testSVM(encoded,None,labels)
+    encoded=sess.run(hidden,feed_dict={dropX:data})
+    f=open("layer"+str(depth),'wb')
+    np.save(f,encoded)
+    f.close()
+
+    testSVM(encoded,labels)
+    testLogistic(encoded,labels,n_hidden[depth])
     print("extract hidden in this layer=",depth)
     w=sess.run(w_encoder)
     print("extract weights in this layer=",depth)
@@ -120,45 +136,65 @@ def NonLinearAE(data,depth):
     return encoded,ws
 
 def LinearAE(data):
-    n_features=data.shape[1]
-    X=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
-    dropX=tf.nn.dropout(X,0.1) #adding noise
+    global learning_rate1
 
-    w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden[0]]))
-    w_decoder=tf.transpose(w_encoder)
-    b_encoder=tf.Variable(tf.random_normal([n_hidden[0]]))
-    b_decoder=tf.Variable(tf.random_normal([n_features]))
+    if os.path.isfile('firstLayers.pk1'):
+        encoder,w=np.load('firstLayers.pk1')
+    else:
+        n_features=data.shape[1]
+        X=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
+        dropX=tf.nn.dropout(X,0.1) #adding noise
 
-    hidden=tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder)
-    y_pred=tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder)
-    y_true=X
+        w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden[0]]))
+        w_decoder=tf.transpose(w_encoder)
+        b_encoder=tf.Variable(tf.random_normal([n_hidden[0]]))
+        b_decoder=tf.Variable(tf.random_normal([n_features]))
 
-    cost=tf.reduce_mean(PCCloss(y_true,y_pred))
-    #cost=tf.reduce_mean(tf.pow(y_true-y_pred, 2))
-    optimizer=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost)
+        hidden=tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder)
+        y_pred=tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder)
+        y_true=X
 
-    # start to run
-    init=tf.global_variables_initializer()
-    sess=tf.Session()
-    sess.run(init)
+        cost=tf.reduce_mean(PCCloss(y_true,y_pred))
+        #cost=tf.reduce_mean(tf.pow(y_true-y_pred, 2))
+        optimizer=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost)
 
-    for epoch in range(max_iter[0]):
-        batches=divideData(data)
-        co=0
-        for batch in batches:
-            _, c=sess.run([optimizer, cost],feed_dict={X:batch})
-            co+=c
-        co/=3
+        # start to run
+        init=tf.global_variables_initializer()
+        sess=tf.Session()
+        sess.run(init)
 
-        if epoch % 200 ==0:
-            print("Epoch:","%04d" % (epoch+1),"cost=", "{:9f}".format(co))
+        for epoch in range(max_iter[0]):
 
-    print("Finished")
+            if epoch >1000 and learning_rate1>0.1:
+                learning_rate1=0.1
+                optimizer=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost)
+            if epoch>2000 and learning_rate1>0.05:
+                learning_rate1=0.05
+                optimizer=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost)
 
-    encoded=sess.run(hidden,feed_dict={dropX:data})
+            batches=divideData(data)
+            co=0
+            for batch in batches:
+                _, c=sess.run([optimizer, cost],feed_dict={X:batch})
+                co+=c
+            co/=3
+
+            if epoch % 200 ==0:
+                print("Epoch:","%04d" % (epoch+1),"cost=", "{:9f}".format(co))
+
+        print("Finished")
+
+        encoded=sess.run(hidden,feed_dict={dropX:data})
+        w=sess.run(w_encoder)
+
+        f=open('firstLayers','wb')
+        np.save(f,[encoded,w])
+        f.close()
+
+    testSVM(encoded,labels)
+    testLogistic(encoded,labels,n_hidden[0])
 
     e,ws=NonLinearAE(encoded,1)
-    w=sess.run(w_encoder)
     ws.append(w)
 
     return e,ws
@@ -199,7 +235,12 @@ def main():
         f.close()
 
     if test:
-        testSVM(encoder,data,labels)
+        #print("[ 0.45945946  0.59459459  0.51351351  0.45945946  0.62162162  0.54054054  0.52777778  0.48571429  0.57142857  0.6]")
+        print("0.5374")
+
+        testSVM(encoder,labels)
+
+        testLogistic(encoder,labels,encoder.shape[1])
 
     if matlab:
         D=np.column_stack([encoder,labels])
