@@ -14,7 +14,6 @@ from sklearn import svm
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
 
-
 n_hidden=[2000,4000,2000,1000,4000,2000,1000]
 #max_iter=[2000,2000,2000,2000,2000,2000,2000]
 max_iter=[500,500,500,500,500,500,500]
@@ -278,6 +277,12 @@ def main():
 
     if matlab:
         D=np.column_stack([encoder,labels])
+        sio.savemat('AE_features',{'D':D})
+
+    if matlab:
+        D=np.column_stack([encoder,labels])
+        print(D.shape)
+        print(D[180:190,-2:])
         sio.savemat('AE_features',{'D':D})
 
 if __name__=="__main__":
