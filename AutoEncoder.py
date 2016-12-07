@@ -17,17 +17,18 @@ from sklearn.model_selection import cross_val_score
 n_hidden=[2000,4000,2000,1000,4000,2000,1000]
 #max_iter=[2000,2000,2000,2000,2000,2000,2000]
 max_iter=[500,500,500,500,500,500,500]
-learning_rate=[0.1,0.05,0.05,0.05,0.05,0.05,0.05]
-
-Max_depth=4
+learning_rate=[0.05,0.05,0.05,0.05,0.05,0.05,0.05]
 
 labels=[]
 
-build=True
-test=True
-matlab=True
-
 log_file=open('log','w')
+
+def divideData(D):
+    index=np.arange(D.shape[0])
+    np.random.shuffle(index)
+    D=D[index,:]
+    batches=np.split(D,3)
+    return batches
 
 def normalize(x):
     mean=tf.div(tf.reduce_sum(x,1,keep_dims=True),4)
@@ -86,7 +87,7 @@ def testLogistic(data,labels,dim):
     log_file.write(str(scores)+"\n")
     log_file.write(str(sum(scores)/10)+"\n")
 
-def NonLinearAE(data,depth,denoise=True):
+def NonLinearAE(data,depth,denoise=True,layers=1):
     global learning_rate2
     print("depth=",depth,"#hidden neuron=",n_hidden[depth])
     log_file.write("depth="+str(depth)+"\n")
@@ -101,13 +102,31 @@ def NonLinearAE(data,depth,denoise=True):
     else:
         dropX=X
 
-    w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden[depth]]))
-    w_decoder=tf.Variable(tf.random_normal([n_hidden[depth], n_features]))
-    b_encoder=tf.Variable(tf.random_normal([n_hidden[depth]]))
-    b_decoder=tf.Variable(tf.random_normal([n_features]))
+    if layers==1:
+        w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden[depth]]))
+        w_decoder=tf.Variable(tf.random_normal([n_hidden[depth], n_features]))
+        b_encoder=tf.Variable(tf.random_normal([n_hidden[depth]]))
+        b_decoder=tf.Variable(tf.random_normal([n_features]))
 
-    hidden=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder))
-    y_pred=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder))
+        hidden=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder))
+        y_pred=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder))
+    else:
+        layers=n_hidden[depth]
+        w_encoder1=tf.Variable(tf.random_normal([n_features, layers]))
+        w_encoder2=tf.Variable(tf.random_normal([layers, layers/2]))
+        w_decoder1=tf.Variable(tf.random_normal([layers/2, layers]))
+        w_decoder2=tf.Variable(tf.random_normal([layers, n_features]))
+        b_encoder1=tf.Variable(tf.random_normal([layers]))
+        b_encoder2=tf.Variable(tf.random_normal([layers/2]))
+        b_decoder1=tf.Variable(tf.random_normal([layers]))
+        b_decoder2=tf.Variable(tf.random_normal([n_features]))
+
+        hidden1=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(dropX,w_encoder1), b_encoder1))
+        hidden2=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden1,w_encoder2), b_encoder2))
+        hidden3=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden2,w_decoder1), b_decoder1))
+        hidden4=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden3,w_decoder2), b_decoder2))
+        y_pred=hidden4
+
     y_true=X
 
     #cost
@@ -116,8 +135,7 @@ def NonLinearAE(data,depth,denoise=True):
 
     #optimizer
     optimizer=tf.train.GradientDescentOptimizer(learning_rate[depth]).minimize(cost)
-    #optimizer=tf.train.AdamOptimizer(learning_rate[depth]).minimize(cost)
-    #optimizer=tf.train.AdadeltaOptimizer(learning_rate[depth]).minimize(cost)
+    #optimizer=tf.train.AdamOptimizer(learning_rate=learning_rate[depth]).minimize(cost)
 
     # start to run
     init=tf.global_variables_initializer()
@@ -128,13 +146,14 @@ def NonLinearAE(data,depth,denoise=True):
         batches=divideData(data)
         co=0
         for batch in batches:
-            mask=addNoise(batch,0.01)
+            mask=addNoise(batch,0.05)
             _, c=sess.run([optimizer, cost],feed_dict={X:batch,X_mask:mask})
             co+=c
         co/=3
 
         learning_rate[depth]*=0.999
         optimizer=tf.train.GradientDescentOptimizer(learning_rate[depth]).minimize(cost)
+        #optimizer=tf.train.AdamOptimizer(learning_rate=learning_rate[depth]).minimize(cost)
 
         if epoch % 100 ==0:
             print("Depth: ", depth, " Epoch:", "%04d" % (epoch+1),"cost=", co)#"{:9f}".format(co))
@@ -142,148 +161,51 @@ def NonLinearAE(data,depth,denoise=True):
     print("finish training")
 
     encoded=sess.run(hidden,feed_dict={dropX:data})
-    f=open("layer"+str(depth),'wb')
-    np.save(f,encoded)
-    f.close()
-
-    testSVM(encoded,labels)
-    testLogistic(encoded,labels,n_hidden[depth])
-    print("extract hidden in this layer=",depth)
     w=sess.run(w_encoder)
-    print("extract weights in this layer=",depth)
 
     sess.close()
-    if depth<Max_depth:
-        print("go deeper",depth)
-        encoded,ws=NonLinearAE(encoded,depth+1)
-    else:
-        print("get to the bottom, layer=",depth)
-        ws=[]
-
-    ws.append(w)
-
-    print("exit this layer=",depth)
-    return encoded,ws
-
-def LinearAE(data):
-    global learning_rate1
-
-    print("Layers0")
-    log_file.write("depth="+str(depth)+"\n")
-
-    if os.path.isfile('firstLayers.pk1'):
-        encoder,w=np.load('firstLayers.pk1')
-    else:
-        n_features=data.shape[1]
-        X=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
-
-        w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden[0]]))
-        w_decoder=tf.transpose(w_encoder)
-        b_encoder=tf.Variable(tf.random_normal([n_hidden[0]]))
-        b_decoder=tf.Variable(tf.random_normal([n_features]))
-
-        hidden=tf.nn.bias_add(tf.matmul(X,w_encoder), b_encoder)
-        y_pred=tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder)
-        y_true=X
-
-        cost=tf.reduce_mean(PCCloss(y_true,y_pred))
-        #cost=tf.reduce_mean(tf.pow(y_true-y_pred, 2))
-        optimizer=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost)
-
-        # start to run
-        init=tf.global_variables_initializer()
-        sess=tf.Session()
-        sess.run(init)
-
-        for epoch in range(max_iter[0]):
-
-            if epoch >1000 and learning_rate1>0.1:
-                learning_rate1=0.1
-                optimizer=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost)
-            if epoch>2000 and learning_rate1>0.05:
-                learning_rate1=0.05
-                optimizer=tf.train.GradientDescentOptimizer(learning_rate1).minimize(cost)
-
-            batches=divideData(data)
-            co=0
-            for batch in batches:
-                _, c=sess.run([optimizer, cost],feed_dict={X:batch})
-                co+=c
-            co/=len(batches)
-
-            if epoch % 200 ==0:
-                print("Epoch:","%04d" % (epoch+1),"cost=", "{:9f}".format(co))
-
-        print("Finished")
-
-        encoded=sess.run(hidden,feed_dict={X:data})
-        w=sess.run(w_encoder)
-
-        f=open('firstLayers','wb')
-        np.save(f,[encoded,w])
-        f.close()
-
+    print("start testing")
     testSVM(encoded,labels)
     testLogistic(encoded,labels,n_hidden[0])
 
-    e,ws=NonLinearAE(encoded,1)
-    ws.append(w)
+    f=open("layer"+str(depth)+".pk1",'wb')
+    np.save(f,encoded)
+    f.close()
 
-    return e,ws
+    return encoded,w
 
-def divideData(D):
-    index=np.arange(D.shape[0])
-    np.random.shuffle(index)
-    D=D[index,:]
-    batches=np.split(D,3)
-    return batches
+def StackAE(data):
+
+    encoding,w1=NonLinearAE(data,0,denoise=True)
+    w=w1
+
+    encoding,w1=NonLinearAE(encoding,1,denoise=True, layers=2)
+    w=np.matmul(w,w1)
+
+    return
+    encoding,w1=NonLinearAE(encoding,2,denoise=True)
+    w=np.matmul(w,w1)
+
+    encoding,w1=NonLinearAE(encoding,3,denoise=True)
+    w=np.matmul(w,w1)
+
+    encoding,w1=NonLinearAE(encoding,3,denoise=True)
+    w=np.matmul(w,w1)
 
 def main():
     global labels
-
     tf.set_random_seed(0)
     np.random.seed(0)
+
     data=pd.read_pickle("data-knn.pk1").values
     labels=(data[:,-1]-1).tolist()
-    #data=np.load('ndata.pk1')
     data=np.load('tdata.pk1')
-    #labels=(data[:,-1]).tolist()
-
     data=data[:,:-1]
 
-    #build=False
-    #test=False
-    matlab=False
-
-    if (not build) and os.path.isfile('encoder.pk1'):
-        encoder=np.load('encoder.pk1')[0]
-    else:
-        t=time.time()
-        #encoder,weights=LinearAE(data)
-        encoder,weights=NonLinearAE(data,0)
-        elapsed=int(time.time()-t)
-        print('elapsed= %d min:%d seconds' % (int(elapsed/60),elapsed%60))
-        f=open('encoder.pk1','wb')
-        np.save(f,[encoder,weights])
-        f.close()
-
-    if test:
-        #print("[ 0.45945946  0.59459459  0.51351351  0.45945946  0.62162162  0.54054054  0.52777778  0.48571429  0.57142857  0.6]")
-        print("0.5374")
-
-        testSVM(encoder,labels)
-
-        testLogistic(encoder,labels,encoder.shape[1])
-
-    if matlab:
-        D=np.column_stack([encoder,labels])
-        sio.savemat('AE_features',{'D':D})
-
-    if matlab:
-        D=np.column_stack([encoder,labels])
-        print(D.shape)
-        print(D[180:190,-2:])
-        sio.savemat('AE_features',{'D':D})
+    t=time.time()
+    StackAE(data)
+    elapsed=int(time.time()-t)
+    print('elapsed= %d min:%d seconds' % (int(elapsed/60),elapsed%60))
 
 if __name__=="__main__":
     main()
