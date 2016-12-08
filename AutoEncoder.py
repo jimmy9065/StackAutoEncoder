@@ -13,11 +13,12 @@ import sklearn.preprocessing as skp
 from sklearn import svm
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
+from sklearn.ensemble import RandomForestClassifier as RF
 
-n_hidden=[2000,4000,2000,1000,4000,2000,1000]
+n_hidden=[2000,4000,1000,500,4000,2000,1000]
 #max_iter=[2000,2000,2000,2000,2000,2000,2000]
-max_iter=[500,500,500,500,500,500,500]
-learning_rate=[0.05,0.05,0.05,0.05,0.05,0.05,0.05]
+max_iter=[500,500,500,500,500,500,500,500,500]
+#learning_rates=[0.2,0.1,0.05,0.05,0.05,0.05,0.05]
 
 labels=[]
 
@@ -87,76 +88,86 @@ def testLogistic(data,labels,dim):
     log_file.write(str(scores)+"\n")
     log_file.write(str(sum(scores)/10)+"\n")
 
-def NonLinearAE(data,depth,denoise=True,layers=1):
-    global learning_rate2
-    print("depth=",depth,"#hidden neuron=",n_hidden[depth])
-    log_file.write("depth="+str(depth)+"\n")
-    log_file.write("#hidden neuron="+str(n_hidden[depth])+"\n")
+def testRF(data,labels):
+    rf=RF(100,n_jobs=-1)
+    score=cross_val_score(rf,data,labels,cv=5)
+    print(score)
+    print(np.mean(score))
+
+def NonLinearAE(data,depth,layers,n_hidden,learning_rate=0.05,max_iter=500,denoise=False):
+    print("depth=",depth,"#hidden neuron=",n_hidden," ",layers,"layers")
+    log_file.write("depth="+str(depth)+"hidden"+str(n_hidden)+"\n")
+    #log_file.write("#hidden neuron="+str(n_hidden)+" "+str(layers)+"layers"+"\n")
     n_features=data.shape[1]
 
     X=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
     X_mask=tf.placeholder(dtype=tf.float32, shape=(None,n_features))
 
     if denoise:
+        print("adding noise")
         dropX=tf.multiply(X,X_mask)
     else:
+        print("no noise")
         dropX=X
 
-    if layers==1:
-        w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden[depth]]))
-        w_decoder=tf.Variable(tf.random_normal([n_hidden[depth], n_features]))
-        b_encoder=tf.Variable(tf.random_normal([n_hidden[depth]]))
-        b_decoder=tf.Variable(tf.random_normal([n_features]))
+    w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden]))
+    w_decoder=tf.Variable(tf.random_normal([n_hidden, n_features]))
+    b_encoder=tf.Variable(tf.random_normal([n_hidden]))
+    b_decoder=tf.Variable(tf.random_normal([n_features]))
 
-        hidden=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder))
-        y_pred=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder))
-    else:
-        layers=n_hidden[depth]
-        w_encoder1=tf.Variable(tf.random_normal([n_features, layers]))
-        w_encoder2=tf.Variable(tf.random_normal([layers, layers/2]))
-        w_decoder1=tf.Variable(tf.random_normal([layers/2, layers]))
-        w_decoder2=tf.Variable(tf.random_normal([layers, n_features]))
-        b_encoder1=tf.Variable(tf.random_normal([layers]))
-        b_encoder2=tf.Variable(tf.random_normal([layers/2]))
-        b_decoder1=tf.Variable(tf.random_normal([layers]))
-        b_decoder2=tf.Variable(tf.random_normal([n_features]))
+    #w_encoder=tf.Variable(tf.zeros([n_features, n_hidden]))
+    #w_decoder=tf.Variable(tf.zeros([n_hidden, n_features]))
+    #b_encoder=tf.Variable(tf.zeros([n_hidden]))
+    #b_decoder=tf.Variable(tf.zeros([n_features]))
 
-        hidden1=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(dropX,w_encoder1), b_encoder1))
-        hidden2=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden1,w_encoder2), b_encoder2))
-        hidden3=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden2,w_decoder1), b_decoder1))
-        hidden4=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden3,w_decoder2), b_decoder2))
-        y_pred=hidden4
+    #hidden=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder))
+    #y_pred=tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder))
+    #hidden=tf.nn.relu(tf.nn.bias_add(tf.matmul(dropX,w_encoder), b_encoder))
+    #y_pred=tf.nn.relu(tf.nn.bias_add(tf.matmul(hidden,w_decoder), b_decoder))
+    hidden=tf.nn.sigmoid(tf.matmul(dropX,w_encoder))
+    y_pred=tf.nn.sigmoid(tf.matmul(hidden,w_decoder))
+    #hidden=tf.nn.relu(tf.matmul(dropX,w_encoder))
+    #y_pred=tf.nn.relu(tf.matmul(hidden,w_decoder))
 
     y_true=X
 
     #cost
-    #cost=tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y_pred,y_true))
+    #cost=tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(y_pred,y_true))
     cost=tf.reduce_mean(tf.square(y_true-y_pred))
 
+    nw=tf.sqrt(tf.reduce_sum(tf.square(w_encoder)))
+    nb=tf.sqrt(tf.reduce_sum(tf.square(b_encoder)))
+
     #optimizer
-    optimizer=tf.train.GradientDescentOptimizer(learning_rate[depth]).minimize(cost)
-    #optimizer=tf.train.AdamOptimizer(learning_rate=learning_rate[depth]).minimize(cost)
+    #optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost+nw*0.1/(n_features*n_hidden))
+    optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost)
+    #optimizer=tf.train.MomentumOptimizer(learning_rate,0.95).minimize(cost-nw*0.1)
+    #optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
 
     # start to run
     init=tf.global_variables_initializer()
     sess=tf.Session()
     sess.run(init)
 
-    for epoch in range(max_iter[depth]):
+    for epoch in range(max_iter):
         batches=divideData(data)
         co=0
         for batch in batches:
             mask=addNoise(batch,0.05)
-            _, c=sess.run([optimizer, cost],feed_dict={X:batch,X_mask:mask})
+            #_, c, nw=sess.run([optimizer, cost, nw],feed_dict={X:batch,X_mask:mask})
+            _, c, w=sess.run([optimizer, cost, nw],feed_dict={X:batch,X_mask:mask})
             co+=c
         co/=3
+        #w/=(n_features*n_hidden)
 
-        learning_rate[depth]*=0.999
-        optimizer=tf.train.GradientDescentOptimizer(learning_rate[depth]).minimize(cost)
-        #optimizer=tf.train.AdamOptimizer(learning_rate=learning_rate[depth]).minimize(cost)
+        learning_rate*=0.999
+        optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost)
+        #optimizer=tf.train.MomentumOptimizer(learning_rate,0.95).minimize(cost-nw*0.1)
+        #optimizer=tf.train.AdamOptimizer(learning_rate).minimize(cost)
 
         if epoch % 100 ==0:
-            print("Depth: ", depth, " Epoch:", "%04d" % (epoch+1),"cost=", co)#"{:9f}".format(co))
+            #print("Depth: ", depth, " Epoch:", "%04d" % (epoch+1),"cost=", co, " weight=", w*0.1, " penalty=",co+w*0.1)
+            print("Depth: ", depth, " Epoch:", "%04d" % (epoch+1),"cost=", co, " weight=", w)
 
     print("finish training")
 
@@ -165,31 +176,38 @@ def NonLinearAE(data,depth,denoise=True,layers=1):
 
     sess.close()
     print("start testing")
-    testSVM(encoded,labels)
-    testLogistic(encoded,labels,n_hidden[0])
-
-    f=open("layer"+str(depth)+".pk1",'wb')
-    np.save(f,encoded)
-    f.close()
+    testRF(encoded,labels)
 
     return encoded,w
 
 def StackAE(data):
 
-    encoding,w1=NonLinearAE(data,0,denoise=True)
+    encoding,w1=NonLinearAE(data,0,1,2000,learning_rate=0.05,max_iter=1000,denoise=True)
     w=w1
 
-    encoding,w1=NonLinearAE(encoding,1,denoise=True, layers=2)
+    encoding,w1=NonLinearAE(encoding,1,1,4000,learning_rate=0.05,max_iter=1000,denoise=True)
     w=np.matmul(w,w1)
 
+    encoding,w1=NonLinearAE(encoding,2,1,2000,learning_rate=0.05,max_iter=1000)
+    w=np.matmul(w,w1)
+
+    encoding,w1=NonLinearAE(encoding,3,1,1000,learning_rate=0.05,max_iter=1000)
+    w=np.matmul(w,w1)
+
+    encoding,w1=NonLinearAE(encoding,4,1,500,learning_rate=0.05,max_iter=1000)
+    w=np.matmul(w,w1)
+
+    encoding,w1=NonLinearAE(encoding,5,1,200,learning_rate=0.05,max_iter=1000)
+    w=np.matmul(w,w1)
+
+    encoding,w1=NonLinearAE(encoding,5,1,100,learning_rate=0.05,max_iter=1000)
+    w=np.matmul(w,w1)
+
+    encoding,w1=NonLinearAE(encoding,5,1,50,learning_rate=0.05,max_iter=1000)
+    w=np.matmul(w,w1)
     return
-    encoding,w1=NonLinearAE(encoding,2,denoise=True)
-    w=np.matmul(w,w1)
 
-    encoding,w1=NonLinearAE(encoding,3,denoise=True)
-    w=np.matmul(w,w1)
-
-    encoding,w1=NonLinearAE(encoding,3,denoise=True)
+    encoding,w1=NonLinearAE(encoding,3,1,500,denoise=True)
     w=np.matmul(w,w1)
 
 def main():
@@ -199,8 +217,8 @@ def main():
 
     data=pd.read_pickle("data-knn.pk1").values
     labels=(data[:,-1]-1).tolist()
-    data=np.load('tdata.pk1')
     data=data[:,:-1]
+    #data=np.load('tdata.pk1')
 
     t=time.time()
     StackAE(data)
