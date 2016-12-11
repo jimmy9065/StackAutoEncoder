@@ -44,7 +44,8 @@ def NonLinearAE(data,depth,layers,n_hidden,learning_rate=0.05,max_iter=500,denoi
         dropX=X
 
     w_encoder=tf.Variable(tf.random_normal([n_features, n_hidden]))
-    w_decoder=tf.Variable(tf.random_normal([n_hidden, n_features]))
+    #w_decoder=tf.Variable(tf.random_normal([n_hidden, n_features]))
+    w_decoder=tf.transpose(w_encoder)
     b_encoder=tf.Variable(tf.random_normal([n_hidden]))
     b_decoder=tf.Variable(tf.random_normal([n_features]))
 
@@ -82,6 +83,7 @@ def NonLinearAE(data,depth,layers,n_hidden,learning_rate=0.05,max_iter=500,denoi
         else:
             _, c, na=sess.run([optimizer, cost, nA],feed_dict={X:data})
 
+        #mini-batch
         #batches=divideData(data)
         #co=0
         #
